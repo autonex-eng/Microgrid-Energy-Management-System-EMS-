@@ -2,86 +2,127 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Solar Microgrid Control</title>
+    <title>Solar Only Controller</title>
     <style>
-        body { font-family: sans-serif; background-color: #f4f4f9; text-align: center; }
-        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f4f7f6; text-align: center; color: #333; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
         
-        /* The Grid Layout */
-        .house-grid { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 30px; }
-        
-        /* House Card Styling */
-        .card { 
-            background: white; padding: 20px; border-radius: 10px; width: 180px; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.3s;
+        /* Main Numbers */
+        .stats-row {
+            display: flex; justify-content: center; gap: 40px; margin-bottom: 40px;
+            background: white; padding: 30px; border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
+        .stat-box { text-align: center; }
+        .stat-val { font-size: 48px; font-weight: bold; }
+        .stat-label { font-size: 14px; font-weight: bold; color: #999; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* Colors */
+        .color-demand { color: #2c3e50; }
+        .color-solar { color: #f39c12; }
+
+        /* Grid Layouts */
+        h3 { border-bottom: 2px solid #ddd; display: inline-block; padding-bottom: 5px; margin-top: 40px; color: #555; }
+        .grid-container { display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; margin-top: 15px; }
         
+        /* Card Design */
+        .card {
+            background: white; padding: 20px; border-radius: 12px; width: 160px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: relative;
+            transition: transform 0.2s;
+        }
+
         /* Status Colors */
-        .card.connected { border-top: 5px solid #28a745; } /* Green */
-        .card.disconnected { border-top: 5px solid #dc3545; opacity: 0.7; } /* Red */
+        .solar-on { border-top: 6px solid #f39c12; }       /* Orange = ON */
+        .solar-off { border-top: 6px solid #bdc3c7; opacity: 0.6; } /* Grey = OFF */
+        .house-active { border-top: 6px solid #2ecc71; }   /* Green = Active */
 
-        .status-text { font-weight: bold; margin-top: 10px; display: block; }
-        .watts { font-size: 24px; font-weight: bold; color: #333; }
+        .unit-name { font-size: 12px; font-weight: bold; color: #7f8c8d; margin-bottom: 5px; }
+        .unit-watts { font-size: 24px; font-weight: bold; color: #333; }
+        
+        /* The Badge */
+        .badge {
+            font-size: 11px; font-weight: bold; color: white; padding: 4px 8px; 
+            border-radius: 4px; display: inline-block; margin-top: 8px;
+        }
 
-        /* Main Meter */
-        .meter { background: #333; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>☀️ Solar Microgrid Controller</h1>
-    
-    <div class="meter">
-        <h2>Total Load: <span id="total-load">0</span> W / <span id="max-load">0</span> W</h2>
-        <p>Grid Status: <span id="grid-status">LOADING...</span></p>
+    <h1>☀️ Solar-Only Relay Controller</h1>
+
+    <div class="stats-row">
+        <div class="stat-box">
+            <div class="stat-label">Total House Demand</div>
+            <div class="stat-val color-demand"><span id="total-demand">0</span> W</div>
+        </div>
+        
+        <div style="width: 2px; background: #eee; height: 80px;"></div>
+
+        <div class="stat-box">
+            <div class="stat-label">Active Solar Supply</div>
+            <div class="stat-val color-solar"><span id="total-solar">0</span> W</div>
+        </div>
     </div>
 
-    <div class="house-grid" id="house-container">
-        </div>
+    <h3>Solar Generation Units (Relay Status)</h3>
+    <div class="grid-container" id="solar-container"></div>
+
+    <h3>Consumer Loads</h3>
+    <div class="grid-container" id="house-container"></div>
 </div>
 
 <script>
-    function fetchSolarData() {
+    function fetchSystemData() {
         fetch('/api/data/')
             .then(response => response.json())
             .then(data => {
-                // 1. Update Main Meter
-                document.getElementById('total-load').innerText = data.total_load;
-                document.getElementById('max-load').innerText = data.max_capacity;
-                document.getElementById('grid-status').innerText = data.grid_status;
+                // 1. Update Numbers
+                // We add .toFixed(2) here to force "5944" to become "5944.00"
+                document.getElementById('total-demand').innerText = data.total_demand.toFixed(2);
+                document.getElementById('total-solar').innerText = data.total_solar.toFixed(2);
+
+                // 2. Render Solar Cards
+                const solarContainer = document.getElementById('solar-container');
+                solarContainer.innerHTML = '';
                 
-                // Color the grid status text
-                const statusElem = document.getElementById('grid-status');
-                statusElem.style.color = data.grid_status === "OVERLOAD" ? "#ff4444" : "#00ff00";
-
-                // 2. Update Houses
-                const container = document.getElementById('house-container');
-                container.innerHTML = ''; // Clear current list
-
-                for (const [houseId, info] of Object.entries(data.houses)) {
-                    // Create Card HTML
+                for (const [id, info] of Object.entries(data.solar_units)) {
+                    const isOn = info.status === 'RELAY ON';
+                    
                     const div = document.createElement('div');
-                    const statusClass = info.status === 'CONNECTED' ? 'connected' : 'disconnected';
-                    const statusIcon = info.status === 'CONNECTED' ? '🟢 ON' : '🔴 OFF';
-
-                    div.className = `card ${statusClass}`;
+                    div.className = `card ${isOn ? 'solar-on' : 'solar-off'}`;
                     div.innerHTML = `
-                        <h3>${houseId.replace('_', ' ').toUpperCase()}</h3>
-                        <div class="watts">${info.wattage} W</div>
-                        <span class="status-text" style="color:${info.status === 'CONNECTED' ? 'green' : 'red'}">
-                            ${statusIcon}
-                        </span>
+                        <div class="unit-name">${id.replace('_', ' ').toUpperCase()}</div>
+                        <div class="unit-watts">${info.generation.toFixed(2)} W</div>
+                        <div class="badge" style="background:${isOn ? '#f39c12' : '#95a5a6'}">
+                            ${isOn ? '⚡ ON' : '⚫ OFF'}
+                        </div>
                     `;
-                    container.appendChild(div);
+                    solarContainer.appendChild(div);
+                }
+
+                // 3. Render House Cards
+                const houseContainer = document.getElementById('house-container');
+                houseContainer.innerHTML = '';
+                
+                for (const [id, info] of Object.entries(data.houses)) {
+                    const div = document.createElement('div');
+                    div.className = 'card house-active';
+                    div.innerHTML = `
+                        <div class="unit-name">${id.replace('_', ' ').toUpperCase()}</div>
+                        <div class="unit-watts">${info.wattage.toFixed(2)} W</div>
+                        <div class="badge" style="background:#2ecc71">CONSUMING</div>
+                    `;
+                    houseContainer.appendChild(div);
                 }
             })
-            .catch(err => console.error("Error fetching data:", err));
+            .catch(err => console.error("Error:", err));
     }
 
-    // Refresh data every 1 second
-    setInterval(fetchSolarData, 1000);
-    fetchSolarData(); // Run immediately on load
+    setInterval(fetchSystemData, 1000);
+    fetchSystemData();
 </script>
 
 </body>
