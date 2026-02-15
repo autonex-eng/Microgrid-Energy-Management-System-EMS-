@@ -79,19 +79,18 @@
         fetch('/api/data/')
             .then(response => response.json())
             .then(data => {
-                // 1. Update Numbers
-                // We add .toFixed(2) here to force "5944" to become "5944.00"
                 document.getElementById('total-demand').innerText = data.total_demand.toFixed(2);
                 document.getElementById('total-solar').innerText = data.total_solar.toFixed(2);
 
-                // 2. Render Solar Cards
                 const solarContainer = document.getElementById('solar-container');
                 solarContainer.innerHTML = '';
                 
                 for (const [id, info] of Object.entries(data.solar_units)) {
-                    const isOn = info.status === 'RELAY ON';
+                    // Logic check: Any status containing "ON" is considered active
+                    const isOn = info.status.includes('ON');
                     
                     const div = document.createElement('div');
+                    // Applies .solar-on class if status is RELAY ON
                     div.className = `card ${isOn ? 'solar-on' : 'solar-off'}`;
                     div.innerHTML = `
                         <div class="unit-name">${id.replace('_', ' ').toUpperCase()}</div>
@@ -103,26 +102,26 @@
                     solarContainer.appendChild(div);
                 }
 
-                // 3. Render House Cards
                 const houseContainer = document.getElementById('house-container');
                 houseContainer.innerHTML = '';
-                
                 for (const [id, info] of Object.entries(data.houses)) {
+                    // Only show as "CONSUMING" if wattage is above 0
+                    const isConsuming = info.wattage > 0;
                     const div = document.createElement('div');
-                    div.className = 'card house-active';
+                    div.className = `card ${isConsuming ? 'house-active' : 'solar-off'}`;
                     div.innerHTML = `
                         <div class="unit-name">${id.replace('_', ' ').toUpperCase()}</div>
                         <div class="unit-watts">${info.wattage.toFixed(2)} W</div>
-                        <div class="badge" style="background:#2ecc71">CONSUMING</div>
+                        <div class="badge" style="background:${isConsuming ? '#2ecc71' : '#e74c3c'}">
+                            ${isConsuming ? 'CONSUMING' : 'CUT OFF'}
+                        </div>
                     `;
                     houseContainer.appendChild(div);
                 }
             })
             .catch(err => console.error("Error:", err));
     }
-
     setInterval(fetchSystemData, 1000);
-    fetchSystemData();
 </script>
 
 </body>

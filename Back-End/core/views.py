@@ -45,64 +45,41 @@ def update_house_data(request):
 
             if house_id in HOUSE_DATA:
                 HOUSE_DATA[house_id]['wattage'] = wattage
-
-
-
-
             
-            # 1. Calculate Total Demand & Potential Solar
             total_demand = sum(h['wattage'] for h in HOUSE_DATA.values())
-            
-            # Calculate what solar COULD produce based on weather (e.g., 5000W max)
-            total_potential_solar = 0
-            unit_potentials = {}
+            remaining_demand_to_fill = total_demand
+
+            # Sequential Solar Logic
             for i in range(1, 6):
-                pot = random.uniform(600, SOLAR_CAPACITY_PER_UNIT) # e.g., 1000W limit
-                unit_potentials[f"solar_{i}"] = pot
-                total_potential_solar += pot
-
-            # 2. CHECK: Do we have enough Solar?
-            if total_potential_solar >= total_demand:
-                # CASE: ENOUGH POWER (Happy Path)
-                # We limit solar to match demand exactly
-                scale = total_demand / total_potential_solar
-                for unit, pot in unit_potentials.items():
-                    SOLAR_UNITS[unit]['generation'] = round(pot * scale, 1)
-                    SOLAR_UNITS[unit]['status'] = "RELAY ON"
-                    
-                # All houses stay ON
-                for h in HOUSE_DATA:
-                    HOUSE_DATA[h]['status'] = "CONNECTED" # You might need to add this status field back to houses
-
-            else:
-                # CASE: NOT ENOUGH POWER (Blackout Prevention)
-                # Solar runs at Max
-                for unit, pot in unit_potentials.items():
-                    SOLAR_UNITS[unit]['generation'] = round(pot, 1)
-                    SOLAR_UNITS[unit]['status'] = "MAX POWER"
-                    
-                # We must CUT OFF houses until Demand < Supply
-                available_power = total_potential_solar
-                current_load = 0
+                unit_id = f"solar_{i}"
+                max_potential = random.uniform(600, SOLAR_CAPACITY_PER_UNIT)
                 
-                # Sort houses by wattage (Smallest first? Or Random?)
-                # Let's just loop and cut power if we run out
-                for house_id, data in HOUSE_DATA.items():
-                    if (current_load + data['wattage']) <= available_power:
-                        # Safe to keep ON
-                        current_load += data['wattage']
-                        # (You would send a "CONNECT" command here)
+                if remaining_demand_to_fill > 0:
+                    if remaining_demand_to_fill >= max_potential:
+                        # Unit provides 100% capacity
+                        SOLAR_UNITS[unit_id]['generation'] = round(max_potential, 2)
+                        SOLAR_UNITS[unit_id]['status'] = "RELAY ON" # Matches HTML logic
+                        remaining_demand_to_fill -= max_potential
                     else:
-                        # Not enough power! CUT IT OFF.
-                        data['wattage'] = 0.0 # Force wattage to 0 because it's off
+                        # Unit is Throttled (Regulating) to match exact demand
+                        SOLAR_UNITS[unit_id]['generation'] = round(remaining_demand_to_fill, 2)
+                        SOLAR_UNITS[unit_id]['status'] = "RELAY ON" # Still "ON"
+                        remaining_demand_to_fill = 0 
+                else:
+                    # Not needed
+                    SOLAR_UNITS[unit_id]['generation'] = 0.0
+                    SOLAR_UNITS[unit_id]['status'] = "OFF"
 
-
-
-
+            # Blackout Prevention
+            if remaining_demand_to_fill > 0:
+                total_generated = total_demand - remaining_demand_to_fill
+                current_load = 0
+                for h_id, h_data in HOUSE_DATA.items():
+                    if (current_load + h_data['wattage']) <= total_generated:
+                        current_load += h_data['wattage']
+                    else:
+                        h_data['wattage'] = 0.0
 
             return JsonResponse({"status": "success"})
-
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
-
-    return JsonResponse({"status": "error", "message": "Only POST allowed"}, status=405)
