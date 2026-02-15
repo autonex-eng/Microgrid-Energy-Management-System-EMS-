@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Solar Microgrid Control</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f9; text-align: center; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        
+        /* The Grid Layout */
+        .house-grid { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 30px; }
+        
+        /* House Card Styling */
+        .card { 
+            background: white; padding: 20px; border-radius: 10px; width: 180px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.3s;
+        }
+        
+        /* Status Colors */
+        .card.connected { border-top: 5px solid #28a745; } /* Green */
+        .card.disconnected { border-top: 5px solid #dc3545; opacity: 0.7; } /* Red */
+
+        .status-text { font-weight: bold; margin-top: 10px; display: block; }
+        .watts { font-size: 24px; font-weight: bold; color: #333; }
+
+        /* Main Meter */
+        .meter { background: #333; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>☀️ Solar Microgrid Controller</h1>
+    
+    <div class="meter">
+        <h2>Total Load: <span id="total-load">0</span> W / <span id="max-load">0</span> W</h2>
+        <p>Grid Status: <span id="grid-status">LOADING...</span></p>
+    </div>
+
+    <div class="house-grid" id="house-container">
+        </div>
+</div>
+
+<script>
+    function fetchSolarData() {
+        fetch('/api/data/')
+            .then(response => response.json())
+            .then(data => {
+                // 1. Update Main Meter
+                document.getElementById('total-load').innerText = data.total_load;
+                document.getElementById('max-load').innerText = data.max_capacity;
+                document.getElementById('grid-status').innerText = data.grid_status;
+                
+                // Color the grid status text
+                const statusElem = document.getElementById('grid-status');
+                statusElem.style.color = data.grid_status === "OVERLOAD" ? "#ff4444" : "#00ff00";
+
+                // 2. Update Houses
+                const container = document.getElementById('house-container');
+                container.innerHTML = ''; // Clear current list
+
+                for (const [houseId, info] of Object.entries(data.houses)) {
+                    // Create Card HTML
+                    const div = document.createElement('div');
+                    const statusClass = info.status === 'CONNECTED' ? 'connected' : 'disconnected';
+                    const statusIcon = info.status === 'CONNECTED' ? '🟢 ON' : '🔴 OFF';
+
+                    div.className = `card ${statusClass}`;
+                    div.innerHTML = `
+                        <h3>${houseId.replace('_', ' ').toUpperCase()}</h3>
+                        <div class="watts">${info.wattage} W</div>
+                        <span class="status-text" style="color:${info.status === 'CONNECTED' ? 'green' : 'red'}">
+                            ${statusIcon}
+                        </span>
+                    `;
+                    container.appendChild(div);
+                }
+            })
+            .catch(err => console.error("Error fetching data:", err));
+    }
+
+    // Refresh data every 1 second
+    setInterval(fetchSolarData, 1000);
+    fetchSolarData(); // Run immediately on load
+</script>
+
+</body>
+</html>
