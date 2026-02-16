@@ -5,7 +5,7 @@ import json
 import random
 
 # --- CONFIGURATION ---
-# Max potential of one solar string/unit
+# Keep this high (e.g. 3000.0) so your supply usually matches demand.
 SOLAR_CAPACITY_PER_UNIT = 3000.0
 
 # --- STORAGE ---
@@ -46,10 +46,12 @@ def update_house_data(request):
             if house_id in HOUSE_DATA:
                 HOUSE_DATA[house_id]['wattage'] = wattage
             
+            # --- 1. CALCULATE DEMAND ---
             total_demand = sum(h['wattage'] for h in HOUSE_DATA.values())
             remaining_demand_to_fill = total_demand
 
-            # Sequential Solar Logic
+            # --- 2. SEQUENTIAL SOLAR LOGIC ---
+            # Try to fill the demand with solar units 1-5
             for i in range(1, 6):
                 unit_id = f"solar_{i}"
                 max_potential = random.uniform(600, SOLAR_CAPACITY_PER_UNIT)
@@ -58,28 +60,25 @@ def update_house_data(request):
                     if remaining_demand_to_fill >= max_potential:
                         # Unit provides 100% capacity
                         SOLAR_UNITS[unit_id]['generation'] = round(max_potential, 2)
-                        SOLAR_UNITS[unit_id]['status'] = "RELAY ON" # Matches HTML logic
+                        SOLAR_UNITS[unit_id]['status'] = "RELAY ON"
                         remaining_demand_to_fill -= max_potential
                     else:
-                        # Unit is Throttled (Regulating) to match exact demand
+                        # Unit throttles to match exact demand
                         SOLAR_UNITS[unit_id]['generation'] = round(remaining_demand_to_fill, 2)
-                        SOLAR_UNITS[unit_id]['status'] = "RELAY ON" # Still "ON"
+                        SOLAR_UNITS[unit_id]['status'] = "RELAY ON"
                         remaining_demand_to_fill = 0 
                 else:
                     # Not needed
                     SOLAR_UNITS[unit_id]['generation'] = 0.0
                     SOLAR_UNITS[unit_id]['status'] = "OFF"
 
-            # Blackout Prevention
-            if remaining_demand_to_fill > 0:
-                total_generated = total_demand - remaining_demand_to_fill
-                current_load = 0
-                for h_id, h_data in HOUSE_DATA.items():
-                    if (current_load + h_data['wattage']) <= total_generated:
-                        current_load += h_data['wattage']
-                    else:
-                        h_data['wattage'] = 0.0
+            # --- REMOVED: BLACKOUT PREVENTION LOGIC ---
+            # We deleted the code that sets house wattage to 0.0
+            # Now, if demand > solar, houses stay ON, and Solar just stays at MAX.
 
             return JsonResponse({"status": "success"})
+
         except Exception as e:
             return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
+    return JsonResponse({"status": "error", "message": "Only POST allowed"}, status=405)
